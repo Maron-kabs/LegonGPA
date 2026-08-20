@@ -1,0 +1,487 @@
+
+
+Gpa · HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Legon GPA — University of Ghana CGPA calculator</title>
+ 
+<!-- ============================================================
+     Legon GPA — a CGPA calculator for University of Ghana students
+     Uses the official UG 4.0 grading scale.
+ 
+     What it does:
+       - Add your courses (credits + grade) to get this semester's GPA
+       - Enter your existing CGPA + credits to get your new CGPA
+       - Shows your degree classification band
+       - Saves your courses on your device (safe fallback if blocked)
+ 
+     GRADING SCALE (source: UG Regulations for Junior Members):
+       A  80-100  4.0     C  60-64  2.0     E  45-49  0.5
+       B+ 75-79   3.5     D+ 55-59  1.5     F  0-44   0.0
+       B  70-74   3.0     D  50-54  1.0
+ 
+     Note: This uses the equal-weighted CGPA (total grade points ÷
+     total credits), which is what students track semester to
+     semester. The FINAL class (FGPA) weights levels 1:1:2:2 across
+     L100-L400 — see the note at the bottom of the page.
+     ============================================================ -->
+ 
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+ 
+<style>
+  :root {
+    --paper:  #EEF0F4;
+    --card:   #FAFBFC;
+    --ink:    #1A1F2E;
+    --muted:  rgba(26,31,46,0.62);
+    --indigo: #2E3A8C;
+    --amber:  #E0A93B;
+    --good:   #2E9E6B;
+    --coral:  #D9614C;
+    --line:   rgba(26,31,46,0.12);
+    --line-2: rgba(26,31,46,0.24);
+ 
+    --display: "Fraunces", Georgia, serif;
+    --body:    "Inter", system-ui, sans-serif;
+    --mono:    "JetBrains Mono", ui-monospace, monospace;
+  }
+ 
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--body); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { width: min(820px, 92vw); margin: 0 auto; }
+ 
+  header.site { padding: 2rem 0 0.5rem; }
+  .brand {
+    display: flex; align-items: center; gap: 0.7rem;
+    font-family: var(--display); font-weight: 600; font-size: 1.55rem;
+    letter-spacing: -0.01em;
+  }
+  .brand .mark {
+    width: 34px; height: 34px; border-radius: 9px; flex: none;
+    background: var(--indigo); color: #fff;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-weight: 700; font-size: 0.95rem;
+  }
+  .brand small {
+    font-family: var(--body); font-weight: 500; font-size: 0.8rem;
+    color: var(--muted); display: block; margin-top: 0.1rem;
+  }
+ 
+  .storage-warn {
+    display: none; background: rgba(224,169,59,0.16); border: 1px solid var(--amber);
+    border-radius: 10px; padding: 0.6rem 0.9rem; font-size: 0.82rem; margin: 1rem 0 0;
+  }
+  .storage-warn.show { display: block; }
+ 
+  /* ---------- result hero ---------- */
+  .result {
+    background: var(--ink); color: #fff;
+    border-radius: 20px; padding: 1.8rem 2rem;
+    margin: 1.5rem 0; display: flex; align-items: center;
+    justify-content: space-between; gap: 1.5rem; flex-wrap: wrap;
+  }
+  .result .gpa-num {
+    font-family: var(--mono); font-weight: 700;
+    font-size: clamp(3rem, 12vw, 4.5rem); line-height: 1;
+    letter-spacing: -0.03em;
+  }
+  .result .gpa-label {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.15em;
+    text-transform: uppercase; opacity: 0.6; margin-bottom: 0.4rem;
+  }
+  .result .class-badge {
+    font-family: var(--display); font-weight: 600; font-size: 1.35rem;
+    text-align: right;
+  }
+  .result .class-sub {
+    font-family: var(--mono); font-size: 0.75rem; opacity: 0.65;
+    text-align: right; margin-top: 0.2rem;
+  }
+  .class-badge.first  { color: #7FE9B0; }
+  .class-badge.upper  { color: #A8E063; }
+  .class-badge.lower  { color: var(--amber); }
+  .class-badge.third  { color: #F0B860; }
+  .class-badge.pass   { color: #E88F6F; }
+  .class-badge.fail   { color: var(--coral); }
+  .class-badge.none   { color: rgba(255,255,255,0.4); }
+ 
+  .totals {
+    display: flex; gap: 2rem; font-family: var(--mono); font-size: 0.8rem;
+    opacity: 0.8; margin-top: 0.6rem; width: 100%;
+  }
+  .totals span b { color: var(--amber); }
+ 
+  /* ---------- cards ---------- */
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 1.4rem 1.5rem; margin-bottom: 1.2rem;
+  }
+  .card h2 {
+    font-family: var(--display); font-weight: 600; font-size: 1.25rem;
+    margin: 0 0 0.3rem;
+  }
+  .card .hint { color: var(--muted); font-size: 0.88rem; margin: 0 0 1.1rem; }
+ 
+  /* ---------- course rows ---------- */
+  .course-head, .course {
+    display: grid;
+    grid-template-columns: 1fr 90px 130px 40px;
+    gap: 0.6rem; align-items: center;
+  }
+  .course-head {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;
+    padding: 0 0.2rem;
+  }
+  .course { margin-bottom: 0.55rem; }
+  input, select {
+    width: 100%; font-family: var(--body); font-size: 0.92rem;
+    padding: 0.55rem 0.6rem; border: 1.5px solid var(--line);
+    border-radius: 9px; background: var(--paper); color: var(--ink);
+  }
+  input:focus, select:focus { outline: 2px solid var(--amber); outline-offset: 1px; border-color: var(--indigo); }
+  input.num, select.grade { font-family: var(--mono); font-weight: 500; text-align: center; }
+  .del-row {
+    background: none; border: none; cursor: pointer; color: var(--muted);
+    font-size: 1.1rem; border-radius: 7px; padding: 0.3rem;
+  }
+  .del-row:hover { color: var(--coral); background: var(--paper); }
+ 
+  .btn {
+    font-family: var(--body); font-weight: 600; font-size: 0.92rem;
+    border: none; border-radius: 10px; padding: 0.65rem 1.1rem;
+    cursor: pointer; transition: transform 0.12s, background 0.15s;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-add {
+    background: var(--paper); color: var(--indigo);
+    border: 1.5px dashed var(--line-2); width: 100%; margin-top: 0.4rem;
+  }
+  .btn-add:hover { border-color: var(--indigo); }
+  :focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+ 
+  /* ---------- cumulative row ---------- */
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+  .field label {
+    display: block; font-family: var(--mono); font-size: 0.66rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+  .toggle-cum {
+    display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
+    font-size: 0.9rem; user-select: none;
+  }
+  .toggle-cum input { width: auto; }
+  #cumFields { margin-top: 1rem; display: none; }
+  #cumFields.show { display: block; }
+ 
+  /* ---------- scale reference ---------- */
+  .scale {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 1.5rem;
+    font-family: var(--mono); font-size: 0.8rem;
+  }
+  .scale div { display: flex; justify-content: space-between; padding: 0.2rem 0; border-bottom: 1px solid var(--line); }
+  .scale div b { color: var(--indigo); }
+  @media (max-width: 560px) { .scale { grid-template-columns: repeat(2, 1fr); } }
+ 
+  .note {
+    font-size: 0.82rem; color: var(--muted); line-height: 1.6;
+    background: var(--card); border-left: 3px solid var(--indigo);
+    padding: 0.8rem 1rem; border-radius: 0 10px 10px 0; margin-bottom: 1.2rem;
+  }
+ 
+  footer.site {
+    padding: 1rem 0 3rem; font-family: var(--mono);
+    font-size: 0.72rem; color: var(--muted); text-align: center;
+  }
+ 
+  @media (max-width: 560px) {
+    .course-head, .course { grid-template-columns: 1fr 64px 104px 34px; gap: 0.4rem; }
+    .result { padding: 1.4rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+ 
+<header class="site">
+  <div class="wrap">
+    <div class="brand">
+      <span class="mark">4.0</span>
+      <span>Legon GPA<small>University of Ghana CGPA calculator</small></span>
+    </div>
+    <div class="storage-warn" id="storageWarn">
+      Your browser is blocking saved data here, so your courses will reset when you close the page. It saves normally when you run it from your own site.
+    </div>
+  </div>
+</header>
+ 
+<main class="wrap">
+ 
+  <!-- result hero -->
+  <section class="result">
+    <div>
+      <div class="gpa-label" id="gpaLabel">This semester's GPA</div>
+      <div class="gpa-num" id="gpaNum">0.00</div>
+    </div>
+    <div>
+      <div class="class-badge none" id="classBadge">—</div>
+      <div class="class-sub" id="classSub">Add courses to begin</div>
+    </div>
+    <div class="totals">
+      <span>Credits: <b id="totCredits">0</b></span>
+      <span>Grade points: <b id="totPoints">0.00</b></span>
+    </div>
+  </section>
+ 
+  <!-- courses -->
+  <section class="card">
+    <h2>Your courses this semester</h2>
+    <p class="hint">Add each course with its credit hours and the grade you got (or expect). The GPA updates as you type.</p>
+ 
+    <div class="course-head">
+      <span>Course (optional)</span>
+      <span style="text-align:center;">Credits</span>
+      <span style="text-align:center;">Grade</span>
+      <span></span>
+    </div>
+    <div id="courseList"></div>
+    <button class="btn btn-add" id="addCourse">+ Add course</button>
+  </section>
+ 
+  <!-- cumulative -->
+  <section class="card">
+    <h2>Already have a CGPA?</h2>
+    <p class="hint">Combine this semester with your record so far to see your new cumulative CGPA.</p>
+    <label class="toggle-cum">
+      <input type="checkbox" id="cumToggle" />
+      I have a previous CGPA to include
+    </label>
+    <div id="cumFields">
+      <div class="row2">
+        <div class="field">
+          <label for="prevCgpa">Previous CGPA</label>
+          <input class="num" id="prevCgpa" type="number" min="0" max="4" step="0.01" placeholder="e.g. 3.42" />
+        </div>
+        <div class="field">
+          <label for="prevCredits">Credits done so far</label>
+          <input class="num" id="prevCredits" type="number" min="0" step="1" placeholder="e.g. 36" />
+        </div>
+      </div>
+    </div>
+  </section>
+ 
+  <!-- scale reference -->
+  <section class="card">
+    <h2>UG grading scale</h2>
+    <div class="scale">
+      <div><span>A · 80–100</span><b>4.0</b></div>
+      <div><span>B+ · 75–79</span><b>3.5</b></div>
+      <div><span>B · 70–74</span><b>3.0</b></div>
+      <div><span>C+ · 65–69</span><b>2.5</b></div>
+      <div><span>C · 60–64</span><b>2.0</b></div>
+      <div><span>D+ · 55–59</span><b>1.5</b></div>
+      <div><span>D · 50–54</span><b>1.0</b></div>
+      <div><span>E · 45–49</span><b>0.5</b></div>
+      <div><span>F · 0–44</span><b>0.0</b></div>
+    </div>
+  </section>
+ 
+  <div class="note">
+    <b>Good to know:</b> This calculates the equal-weighted CGPA (total grade points ÷ total credits) — the figure you track each semester. Your <b>final</b> class of degree is decided by the FGPA, which weights the four levels in a 1:1:2:2 ratio (L100 : L200 : L300 : L400), so your final result leans more on your third and fourth year. Always confirm against your official transcript.
+  </div>
+</main>
+ 
+<footer class="site">
+  Legon GPA · a learning project · your data stays on your device
+</footer>
+ 
+<script>
+/* ============================================================
+   GRADING SCALE — the UG 4.0 system
+   ============================================================ */
+const GRADES = [
+  { letter: "A",  point: 4.0 },
+  { letter: "B+", point: 3.5 },
+  { letter: "B",  point: 3.0 },
+  { letter: "C+", point: 2.5 },
+  { letter: "C",  point: 2.0 },
+  { letter: "D+", point: 1.5 },
+  { letter: "D",  point: 1.0 },
+  { letter: "E",  point: 0.5 },
+  { letter: "F",  point: 0.0 }
+];
+ 
+/* ============================================================
+   STATE + STORAGE (with safe fallback)
+   ============================================================ */
+const STORAGE_KEY = "legon_gpa_v1";
+let state = {
+  courses: [],           // { id, name, credits, grade(letter) }
+  cumOn: false,
+  prevCgpa: "",
+  prevCredits: ""
+};
+ 
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch (e) { document.getElementById("storageWarn").classList.add("show"); }
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch (e) { document.getElementById("storageWarn").classList.add("show"); }
+}
+ 
+/* ============================================================
+   CLASSIFICATION — maps a GPA to its UG degree band
+   ============================================================ */
+function classify(gpa) {
+  if (gpa >= 3.60) return { label: "First Class", css: "first", range: "3.60 – 4.00" };
+  if (gpa >= 3.00) return { label: "Second Class Upper", css: "upper", range: "3.00 – 3.59" };
+  if (gpa >= 2.00) return { label: "Second Class Lower", css: "lower", range: "2.00 – 2.99" };
+  if (gpa >= 1.50) return { label: "Third Class", css: "third", range: "1.50 – 1.99" };
+  if (gpa >= 1.00) return { label: "Pass", css: "pass", range: "1.00 – 1.49" };
+  return { label: "Fail", css: "fail", range: "below 1.00" };
+}
+ 
+function pointOf(letter) {
+  const g = GRADES.find(x => x.letter === letter);
+  return g ? g.point : 0;
+}
+ 
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderCourses() {
+  const list = document.getElementById("courseList");
+  list.innerHTML = "";
+  state.courses.forEach(c => {
+    const row = document.createElement("div");
+    row.className = "course";
+    row.innerHTML = `
+      <input type="text" placeholder="e.g. DCIT 102" value="${c.name || ""}" data-id="${c.id}" data-f="name" />
+      <input class="num" type="number" min="0" step="1" placeholder="3" value="${c.credits}" data-id="${c.id}" data-f="credits" />
+      <select class="grade" data-id="${c.id}" data-f="grade">
+        ${GRADES.map(g => `<option value="${g.letter}" ${g.letter === c.grade ? "selected" : ""}>${g.letter} (${g.point.toFixed(1)})</option>`).join("")}
+      </select>
+      <button class="del-row" data-del="${c.id}" aria-label="Remove course">✕</button>`;
+    list.appendChild(row);
+  });
+ 
+  // wire inputs
+  list.querySelectorAll("[data-f]").forEach(el => {
+    el.addEventListener("input", () => {
+      const c = state.courses.find(x => x.id === +el.dataset.id);
+      if (!c) return;
+      c[el.dataset.f] = el.dataset.f === "credits" ? el.value : el.value;
+      save(); compute();
+    });
+  });
+  list.querySelectorAll("[data-del]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.courses = state.courses.filter(x => x.id !== +btn.dataset.del);
+      save(); renderCourses(); compute();
+    });
+  });
+}
+ 
+/* ============================================================
+   COMPUTE — the actual GPA / CGPA maths
+   ============================================================ */
+function compute() {
+  let semCredits = 0, semPoints = 0;
+  state.courses.forEach(c => {
+    const cr = parseFloat(c.credits);
+    if (!cr || cr <= 0) return;
+    semCredits += cr;
+    semPoints += cr * pointOf(c.grade);   // grade points = credits × grade point
+  });
+ 
+  const semGpa = semCredits > 0 ? semPoints / semCredits : 0;
+ 
+  // cumulative combine (optional)
+  let shownGpa = semGpa;
+  let shownCredits = semCredits;
+  let shownPoints = semPoints;
+  let label = "This semester's GPA";
+ 
+  if (state.cumOn) {
+    const pCgpa = parseFloat(state.prevCgpa);
+    const pCredits = parseFloat(state.prevCredits);
+    if (pCgpa >= 0 && pCredits > 0) {
+      const prevPoints = pCgpa * pCredits;
+      shownPoints = prevPoints + semPoints;
+      shownCredits = pCredits + semCredits;
+      shownGpa = shownCredits > 0 ? shownPoints / shownCredits : 0;
+      label = "New cumulative CGPA";
+    }
+  }
+ 
+  document.getElementById("gpaLabel").textContent = label;
+  document.getElementById("gpaNum").textContent = shownGpa.toFixed(2);
+  document.getElementById("totCredits").textContent = shownCredits;
+  document.getElementById("totPoints").textContent = shownPoints.toFixed(2);
+ 
+  const badge = document.getElementById("classBadge");
+  const sub = document.getElementById("classSub");
+  if (shownCredits > 0) {
+    const cls = classify(shownGpa);
+    badge.textContent = cls.label;
+    badge.className = "class-badge " + cls.css;
+    sub.textContent = cls.range;
+  } else {
+    badge.textContent = "—";
+    badge.className = "class-badge none";
+    sub.textContent = "Add courses to begin";
+  }
+}
+ 
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+function addCourse(grade = "A") {
+  state.courses.push({ id: Date.now() + Math.floor(Math.random() * 1000), name: "", credits: "", grade });
+  save(); renderCourses(); compute();
+}
+ 
+document.getElementById("addCourse").addEventListener("click", () => addCourse());
+ 
+const cumToggle = document.getElementById("cumToggle");
+const cumFields = document.getElementById("cumFields");
+cumToggle.addEventListener("change", () => {
+  state.cumOn = cumToggle.checked;
+  cumFields.classList.toggle("show", state.cumOn);
+  save(); compute();
+});
+document.getElementById("prevCgpa").addEventListener("input", e => { state.prevCgpa = e.target.value; save(); compute(); });
+document.getElementById("prevCredits").addEventListener("input", e => { state.prevCredits = e.target.value; save(); compute(); });
+ 
+/* ============================================================
+   INIT
+   ============================================================ */
+load();
+if (state.courses.length === 0) {
+  // start with three empty rows
+  state.courses = [1, 2, 3].map((n, i) => ({ id: Date.now() + i, name: "", credits: "", grade: "A" }));
+}
+cumToggle.checked = state.cumOn;
+cumFields.classList.toggle("show", state.cumOn);
+document.getElementById("prevCgpa").value = state.prevCgpa || "";
+document.getElementById("prevCredits").value = state.prevCredits || "";
+renderCourses();
+compute();
+</script>
+</body>
+</html>
+ 
