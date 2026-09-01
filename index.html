@@ -1,37 +1,36 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Legon GPA — University of Ghana CGPA calculator</title>
- 
+
 <!-- ============================================================
      Legon GPA — a CGPA calculator for University of Ghana students
      Uses the official UG 4.0 grading scale.
- 
+
      What it does:
        - Add your courses (credits + grade) to get this semester's GPA
        - Enter your existing CGPA + credits to get your new CGPA
        - Shows your degree classification band
+       - Light / dark theme toggle (remembers your choice)
        - Saves your courses on your device (safe fallback if blocked)
- 
+
      GRADING SCALE (source: UG Regulations for Junior Members):
        A  80-100  4.0     C  60-64  2.0     E  45-49  0.5
        B+ 75-79   3.5     D+ 55-59  1.5     F  0-44   0.0
        B  70-74   3.0     D  50-54  1.0
- 
+
      Note: This uses the equal-weighted CGPA (total grade points ÷
      total credits), which is what students track semester to
      semester. The FINAL class (FGPA) weights levels 1:1:2:2 across
      L100-L400 — see the note at the bottom of the page.
      ============================================================ -->
- 
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
- 
+
 <style>
   :root {
     --paper:  #EEF0F4;
@@ -39,26 +38,52 @@
     --ink:    #1A1F2E;
     --muted:  rgba(26,31,46,0.62);
     --indigo: #2E3A8C;
+    --accent: #2E3A8C;   /* indigo used as text/lines on surfaces */
+    --hero-bg:#1A1F2E;   /* result hero — stays dark in both themes */
     --amber:  #E0A93B;
     --good:   #2E9E6B;
     --coral:  #D9614C;
     --line:   rgba(26,31,46,0.12);
     --line-2: rgba(26,31,46,0.24);
- 
+
     --display: "Fraunces", Georgia, serif;
     --body:    "Inter", system-ui, sans-serif;
     --mono:    "JetBrains Mono", ui-monospace, monospace;
+
+    color-scheme: light;
   }
- 
+
+  /* ---------- dark theme ----------
+     Flips the neutrals; the hero keeps its own dark background so
+     the white text on it stays readable. Indigo is brightened via
+     --accent for text/lines that sit on dark surfaces. */
+  [data-theme="dark"] {
+    --paper:  #0F1320;
+    --card:   #171C2B;
+    --ink:    #E7EAF2;
+    --muted:  rgba(231,234,242,0.60);
+    --indigo: #4A5AB8;
+    --accent: #93A2FF;
+    --hero-bg:#1E2540;
+    --line:   rgba(231,234,242,0.14);
+    --line-2: rgba(231,234,242,0.26);
+
+    color-scheme: dark;
+  }
+
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--paper); color: var(--ink);
     font-family: var(--body); line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    transition: background 0.3s ease, color 0.3s ease;
   }
   .wrap { width: min(820px, 92vw); margin: 0 auto; }
- 
+
   header.site { padding: 2rem 0 0.5rem; }
+  .top-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  }
   .brand {
     display: flex; align-items: center; gap: 0.7rem;
     font-family: var(--display); font-weight: 600; font-size: 1.55rem;
@@ -74,19 +99,31 @@
     font-family: var(--body); font-weight: 500; font-size: 0.8rem;
     color: var(--muted); display: block; margin-top: 0.1rem;
   }
- 
+
+  /* ---------- theme toggle ---------- */
+  .theme-toggle {
+    flex: none; width: 40px; height: 40px; border-radius: 11px;
+    border: 1.5px solid var(--line-2); background: var(--card); color: var(--ink);
+    cursor: pointer; font-size: 1.1rem; line-height: 1;
+    display: grid; place-items: center;
+    transition: border-color 0.15s, transform 0.12s;
+  }
+  .theme-toggle:hover { border-color: var(--indigo); }
+  .theme-toggle:active { transform: translateY(1px); }
+
   .storage-warn {
     display: none; background: rgba(224,169,59,0.16); border: 1px solid var(--amber);
     border-radius: 10px; padding: 0.6rem 0.9rem; font-size: 0.82rem; margin: 1rem 0 0;
   }
   .storage-warn.show { display: block; }
- 
+
   /* ---------- result hero ---------- */
   .result {
-    background: var(--ink); color: #fff;
+    background: var(--hero-bg); color: #fff;
     border-radius: 20px; padding: 1.8rem 2rem;
     margin: 1.5rem 0; display: flex; align-items: center;
     justify-content: space-between; gap: 1.5rem; flex-wrap: wrap;
+    transition: background 0.3s ease;
   }
   .result .gpa-num {
     font-family: var(--mono); font-weight: 700;
@@ -112,13 +149,13 @@
   .class-badge.pass   { color: #E88F6F; }
   .class-badge.fail   { color: var(--coral); }
   .class-badge.none   { color: rgba(255,255,255,0.4); }
- 
+
   .totals {
     display: flex; gap: 2rem; font-family: var(--mono); font-size: 0.8rem;
     opacity: 0.8; margin-top: 0.6rem; width: 100%;
   }
   .totals span b { color: var(--amber); }
- 
+
   /* ---------- cards ---------- */
   .card {
     background: var(--card); border: 1px solid var(--line);
@@ -129,7 +166,7 @@
     margin: 0 0 0.3rem;
   }
   .card .hint { color: var(--muted); font-size: 0.88rem; margin: 0 0 1.1rem; }
- 
+
   /* ---------- course rows ---------- */
   .course-head, .course {
     display: grid;
@@ -147,14 +184,14 @@
     padding: 0.55rem 0.6rem; border: 1.5px solid var(--line);
     border-radius: 9px; background: var(--paper); color: var(--ink);
   }
-  input:focus, select:focus { outline: 2px solid var(--amber); outline-offset: 1px; border-color: var(--indigo); }
+  input:focus, select:focus { outline: 2px solid var(--amber); outline-offset: 1px; border-color: var(--accent); }
   input.num, select.grade { font-family: var(--mono); font-weight: 500; text-align: center; }
   .del-row {
     background: none; border: none; cursor: pointer; color: var(--muted);
     font-size: 1.1rem; border-radius: 7px; padding: 0.3rem;
   }
   .del-row:hover { color: var(--coral); background: var(--paper); }
- 
+
   .btn {
     font-family: var(--body); font-weight: 600; font-size: 0.92rem;
     border: none; border-radius: 10px; padding: 0.65rem 1.1rem;
@@ -162,12 +199,12 @@
   }
   .btn:active { transform: translateY(1px); }
   .btn-add {
-    background: var(--paper); color: var(--indigo);
+    background: var(--paper); color: var(--accent);
     border: 1.5px dashed var(--line-2); width: 100%; margin-top: 0.4rem;
   }
-  .btn-add:hover { border-color: var(--indigo); }
+  .btn-add:hover { border-color: var(--accent); }
   :focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
- 
+
   /* ---------- cumulative row ---------- */
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
   .field label {
@@ -182,27 +219,27 @@
   .toggle-cum input { width: auto; }
   #cumFields { margin-top: 1rem; display: none; }
   #cumFields.show { display: block; }
- 
+
   /* ---------- scale reference ---------- */
   .scale {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 1.5rem;
     font-family: var(--mono); font-size: 0.8rem;
   }
   .scale div { display: flex; justify-content: space-between; padding: 0.2rem 0; border-bottom: 1px solid var(--line); }
-  .scale div b { color: var(--indigo); }
+  .scale div b { color: var(--accent); }
   @media (max-width: 560px) { .scale { grid-template-columns: repeat(2, 1fr); } }
- 
+
   .note {
     font-size: 0.82rem; color: var(--muted); line-height: 1.6;
-    background: var(--card); border-left: 3px solid var(--indigo);
+    background: var(--card); border-left: 3px solid var(--accent);
     padding: 0.8rem 1rem; border-radius: 0 10px 10px 0; margin-bottom: 1.2rem;
   }
- 
+
   footer.site {
     padding: 1rem 0 3rem; font-family: var(--mono);
     font-size: 0.72rem; color: var(--muted); text-align: center;
   }
- 
+
   @media (max-width: 560px) {
     .course-head, .course { grid-template-columns: 1fr 64px 104px 34px; gap: 0.4rem; }
     .result { padding: 1.4rem; }
@@ -211,21 +248,27 @@
 </style>
 </head>
 <body>
- 
+
 <header class="site">
   <div class="wrap">
-    <div class="brand">
-      <span class="mark">4.0</span>
-      <span>Legon GPA<small>University of Ghana CGPA calculator</small></span>
+    <div class="top-row">
+      <div class="brand">
+        <span class="mark">4.0</span>
+        <span>Legon GPA<small>University of Ghana CGPA calculator</small></span>
+      </div>
+      <button id="themeToggle" class="theme-toggle" type="button"
+              aria-label="Switch to dark mode" aria-pressed="false">
+        <span class="ic" aria-hidden="true">🌙</span>
+      </button>
     </div>
     <div class="storage-warn" id="storageWarn">
       Your browser is blocking saved data here, so your courses will reset when you close the page. It saves normally when you run it from your own site.
     </div>
   </div>
 </header>
- 
+
 <main class="wrap">
- 
+
   <!-- result hero -->
   <section class="result">
     <div>
@@ -241,12 +284,12 @@
       <span>Grade points: <b id="totPoints">0.00</b></span>
     </div>
   </section>
- 
+
   <!-- courses -->
   <section class="card">
     <h2>Your courses this semester</h2>
     <p class="hint">Add each course with its credit hours and the grade you got (or expect). The GPA updates as you type.</p>
- 
+
     <div class="course-head">
       <span>Course (optional)</span>
       <span style="text-align:center;">Credits</span>
@@ -256,7 +299,7 @@
     <div id="courseList"></div>
     <button class="btn btn-add" id="addCourse">+ Add course</button>
   </section>
- 
+
   <!-- cumulative -->
   <section class="card">
     <h2>Already have a CGPA?</h2>
@@ -278,7 +321,7 @@
       </div>
     </div>
   </section>
- 
+
   <!-- scale reference -->
   <section class="card">
     <h2>UG grading scale</h2>
@@ -294,16 +337,16 @@
       <div><span>F · 0–44</span><b>0.0</b></div>
     </div>
   </section>
- 
+
   <div class="note">
     <b>Good to know:</b> This calculates the equal-weighted CGPA (total grade points ÷ total credits) — the figure you track each semester. Your <b>final</b> class of degree is decided by the FGPA, which weights the four levels in a 1:1:2:2 ratio (L100 : L200 : L300 : L400), so your final result leans more on your third and fourth year. Always confirm against your official transcript.
   </div>
 </main>
- 
+
 <footer class="site">
   Legon GPA · a learning project · your data stays on your device
 </footer>
- 
+
 <script>
 /* ============================================================
    GRADING SCALE — the UG 4.0 system
@@ -319,7 +362,35 @@ const GRADES = [
   { letter: "E",  point: 0.5 },
   { letter: "F",  point: 0.0 }
 ];
- 
+
+/* ============================================================
+   THEME (light / dark) — remembers the choice, falls back to
+   the device preference the first time. Its own storage key.
+   ============================================================ */
+const THEME_KEY = "legon_gpa_theme_v1";
+const themeToggle = document.getElementById("themeToggle");
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const dark = theme === "dark";
+  themeToggle.querySelector(".ic").textContent = dark ? "☀️" : "🌙";
+  themeToggle.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  themeToggle.setAttribute("aria-pressed", String(dark));
+}
+function initTheme() {
+  let theme = null;
+  try { theme = localStorage.getItem(THEME_KEY); } catch (e) {}
+  if (!theme) {
+    theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  applyTheme(theme);
+}
+themeToggle.addEventListener("click", () => {
+  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+});
+
 /* ============================================================
    STATE + STORAGE (with safe fallback)
    ============================================================ */
@@ -330,7 +401,7 @@ let state = {
   prevCgpa: "",
   prevCredits: ""
 };
- 
+
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { document.getElementById("storageWarn").classList.add("show"); }
@@ -341,7 +412,7 @@ function load() {
     if (raw) state = JSON.parse(raw);
   } catch (e) { document.getElementById("storageWarn").classList.add("show"); }
 }
- 
+
 /* ============================================================
    CLASSIFICATION — maps a GPA to its UG degree band
    ============================================================ */
@@ -353,12 +424,12 @@ function classify(gpa) {
   if (gpa >= 1.00) return { label: "Pass", css: "pass", range: "1.00 – 1.49" };
   return { label: "Fail", css: "fail", range: "below 1.00" };
 }
- 
+
 function pointOf(letter) {
   const g = GRADES.find(x => x.letter === letter);
   return g ? g.point : 0;
 }
- 
+
 /* ============================================================
    RENDER
    ============================================================ */
@@ -377,7 +448,7 @@ function renderCourses() {
       <button class="del-row" data-del="${c.id}" aria-label="Remove course">✕</button>`;
     list.appendChild(row);
   });
- 
+
   // wire inputs
   list.querySelectorAll("[data-f]").forEach(el => {
     el.addEventListener("input", () => {
@@ -394,7 +465,7 @@ function renderCourses() {
     });
   });
 }
- 
+
 /* ============================================================
    COMPUTE — the actual GPA / CGPA maths
    ============================================================ */
@@ -406,15 +477,15 @@ function compute() {
     semCredits += cr;
     semPoints += cr * pointOf(c.grade);   // grade points = credits × grade point
   });
- 
+
   const semGpa = semCredits > 0 ? semPoints / semCredits : 0;
- 
+
   // cumulative combine (optional)
   let shownGpa = semGpa;
   let shownCredits = semCredits;
   let shownPoints = semPoints;
   let label = "This semester's GPA";
- 
+
   if (state.cumOn) {
     const pCgpa = parseFloat(state.prevCgpa);
     const pCredits = parseFloat(state.prevCredits);
@@ -426,12 +497,12 @@ function compute() {
       label = "New cumulative CGPA";
     }
   }
- 
+
   document.getElementById("gpaLabel").textContent = label;
   document.getElementById("gpaNum").textContent = shownGpa.toFixed(2);
   document.getElementById("totCredits").textContent = shownCredits;
   document.getElementById("totPoints").textContent = shownPoints.toFixed(2);
- 
+
   const badge = document.getElementById("classBadge");
   const sub = document.getElementById("classSub");
   if (shownCredits > 0) {
@@ -445,7 +516,7 @@ function compute() {
     sub.textContent = "Add courses to begin";
   }
 }
- 
+
 /* ============================================================
    ACTIONS
    ============================================================ */
@@ -453,9 +524,9 @@ function addCourse(grade = "A") {
   state.courses.push({ id: Date.now() + Math.floor(Math.random() * 1000), name: "", credits: "", grade });
   save(); renderCourses(); compute();
 }
- 
+
 document.getElementById("addCourse").addEventListener("click", () => addCourse());
- 
+
 const cumToggle = document.getElementById("cumToggle");
 const cumFields = document.getElementById("cumFields");
 cumToggle.addEventListener("change", () => {
@@ -465,10 +536,11 @@ cumToggle.addEventListener("change", () => {
 });
 document.getElementById("prevCgpa").addEventListener("input", e => { state.prevCgpa = e.target.value; save(); compute(); });
 document.getElementById("prevCredits").addEventListener("input", e => { state.prevCredits = e.target.value; save(); compute(); });
- 
+
 /* ============================================================
    INIT
    ============================================================ */
+initTheme();
 load();
 if (state.courses.length === 0) {
   // start with three empty rows
@@ -483,4 +555,3 @@ compute();
 </script>
 </body>
 </html>
- 
