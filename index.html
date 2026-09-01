@@ -319,9 +319,10 @@
   <!-- backup -->
   <section class="card">
     <h2>Backup &amp; data</h2>
-    <p class="hint">Your data lives only on this device. Export a file to keep a copy or move it to another phone or laptop.</p>
+    <p class="hint">Download a <b>PDF summary</b> to keep, print, or share. The <b>.json backup</b> is for moving your data to another phone or laptop — use Import there.</p>
     <div class="backup-btns">
-      <button class="btn btn-line" id="exportBtn">⬇ Export backup</button>
+      <button class="btn btn-line" id="pdfBtn">⬇ Download PDF</button>
+      <button class="btn btn-line" id="exportBtn">⬇ Backup (.json)</button>
       <label class="btn btn-line" for="importFile" style="display:inline-block;">⬆ Import backup</label>
       <input id="importFile" type="file" accept="application/json,.json" hidden />
       <button class="btn btn-line danger" id="resetBtn">Reset all</button>
@@ -666,13 +667,97 @@ document.getElementById("delSem").addEventListener("click", () => {
 document.getElementById("goalCgpa").addEventListener("input", e => { state.target.goalCgpa = e.target.value; save(); compute(); });
 document.getElementById("plannedCredits").addEventListener("input", e => { state.target.plannedCredits = e.target.value; save(); compute(); });
 
-/* ---------- backup: export / import / reset ---------- */
+/* ---------- backup: PDF summary / JSON export / import / reset ---------- */
+
+/* Build a clean, printable academic-summary document */
+function buildSummaryHtml() {
+  const cum = cumulativeTotals();
+  const cgpa = cum.credits > 0 ? cum.points / cum.credits : 0;
+  const cls = cum.credits > 0 ? classify(cgpa) : { label: "—", range: "" };
+  const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+  const semBlocks = state.semesters.map(s => {
+    const t = semesterTotals(s);
+    const gpa = t.credits > 0 ? t.points / t.credits : 0;
+    const rows = s.courses.filter(c => parseFloat(c.credits) > 0 && c.grade).map(c => {
+      const cr = parseFloat(c.credits);
+      return `<tr><td>${escapeHtml(c.name || "—")}</td><td class="c">${cr}</td><td class="c">${c.grade}</td><td class="c">${(cr * pointOf(c.grade)).toFixed(2)}</td></tr>`;
+    }).join("");
+    return `<div class="sem">
+      <h3>${escapeHtml(s.name)} <span>GPA ${gpa.toFixed(2)} · ${t.credits} credits</span></h3>
+      <table><thead><tr><th>Course</th><th class="c">Credits</th><th class="c">Grade</th><th class="c">Grade pts</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="4" class="muted">No graded courses.</td></tr>`}</tbody></table>
+    </div>`;
+  }).join("");
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Legon GPA — Academic Summary</title>
+  <style>
+    *{box-sizing:border-box;} body{font-family:Georgia,'Times New Roman',serif;color:#111;margin:32px;line-height:1.5;}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2E3A8C;padding-bottom:12px;margin-bottom:20px;}
+    .head h1{font-size:20px;margin:0;color:#2E3A8C;} .head .sub{font-size:12px;color:#555;margin-top:2px;}
+    .head .date{font-size:11px;color:#666;text-align:right;}
+    .summary{display:flex;gap:26px;flex-wrap:wrap;background:#f4f5f9;border:1px solid #e2e4ee;border-radius:8px;padding:14px 18px;margin-bottom:22px;}
+    .summary div span{font-size:10px;color:#666;letter-spacing:0.05em;} .summary b{display:block;font-size:22px;color:#2E3A8C;font-family:'Courier New',monospace;}
+    .summary .cls b{font-size:16px;}
+    .sem{margin-bottom:18px;page-break-inside:avoid;}
+    .sem h3{font-size:14px;margin:0 0 6px;border-left:3px solid #E0A93B;padding-left:8px;}
+    .sem h3 span{font-weight:normal;color:#666;font-size:12px;font-family:'Courier New',monospace;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e5e5e5;}
+    th{font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#666;}
+    td.c,th.c{text-align:center;font-family:'Courier New',monospace;}
+    .muted{color:#999;}
+    .note{font-size:10px;color:#666;margin-top:20px;border-top:1px solid #ddd;padding-top:10px;line-height:1.6;}
+    @media print{ body{margin:0;} @page{margin:18mm;} }
+  </style></head><body>
+    <div class="head">
+      <div><h1>Academic Summary</h1><div class="sub">Legon GPA · University of Ghana grading (4.0 scale)</div></div>
+      <div class="date">Generated<br>${today}</div>
+    </div>
+    <div class="summary">
+      <div class="cls"><span>CLASS</span><b>${escapeHtml(cls.label)}</b></div>
+      <div><span>CUMULATIVE CGPA</span><b>${cgpa.toFixed(2)}</b></div>
+      <div><span>CREDITS</span><b>${cum.credits}</b></div>
+      <div><span>GRADE POINTS</span><b>${cum.points.toFixed(1)}</b></div>
+    </div>
+    ${semBlocks}
+    <div class="note">This is an equal-weighted CGPA (total grade points ÷ total credits) for personal tracking. The official final class of degree (FGPA) weights levels L100:L200:L300:L400 in a 1:1:2:2 ratio. Always confirm against your official University of Ghana transcript.</div>
+  </body></html>`;
+}
+
+/* Open the summary and hand it to the browser's Print → Save as PDF.
+   Uses a hidden iframe (no pop-up blocker), with a new-tab fallback. */
+function exportPdf() {
+  const cum = cumulativeTotals();
+  if (cum.credits <= 0) { alert("Add at least one graded course before downloading a summary."); return; }
+  const html = buildSummaryHtml();
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  document.body.appendChild(frame);
+  const doc = frame.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  const go = () => {
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch (e) {
+      const w = window.open("", "_blank");
+      if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); }
+      else { alert("Allow pop-ups to download the PDF, or use your browser's Print → Save as PDF."); }
+    }
+    setTimeout(() => frame.remove(), 2000);
+  };
+  if (doc.readyState === "complete") setTimeout(go, 250);
+  else frame.onload = () => setTimeout(go, 250);
+}
+document.getElementById("pdfBtn").addEventListener("click", exportPdf);
+
 document.getElementById("exportBtn").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "legon-gpa-backup.json"; a.click();
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = "legon-gpa-backup.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 document.getElementById("importFile").addEventListener("change", e => {
   const file = e.target.files[0]; if (!file) return;
