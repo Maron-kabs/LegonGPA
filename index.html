@@ -6,25 +6,20 @@
 <title>Legon GPA — University of Ghana CGPA calculator</title>
 
 <!-- ============================================================
-     Legon GPA — a CGPA calculator for University of Ghana students
-     Uses the official UG 4.0 grading scale.
+     Legon GPA — a CGPA calculator + tracker for UG students.
+     Official UG 4.0 grading scale.
 
-     What it does:
-       - Add your courses (credits + grade) to get this semester's GPA
-       - Enter your existing CGPA + credits to get your new CGPA
-       - Shows your degree classification band
-       - Light / dark theme toggle (remembers your choice)
-       - Saves your courses on your device (safe fallback if blocked)
+     Features:
+       - Multi-semester tracker (CGPA computed across all semesters)
+       - Target calculator (GPA needed next semester to hit a goal)
+       - CGPA trend graph
+       - Enter grades by letter OR by raw mark (auto-mapped)
+       - Class-of-degree progress nudge
+       - Backup: export / import / reset (data is per-device)
+       - Light / dark theme (remembers your choice)
 
-     GRADING SCALE (source: UG Regulations for Junior Members):
-       A  80-100  4.0     C  60-64  2.0     E  45-49  0.5
-       B+ 75-79   3.5     D+ 55-59  1.5     F  0-44   0.0
-       B  70-74   3.0     D  50-54  1.0
-
-     Note: This uses the equal-weighted CGPA (total grade points ÷
-     total credits), which is what students track semester to
-     semester. The FINAL class (FGPA) weights levels 1:1:2:2 across
-     L100-L400 — see the note at the bottom of the page.
+     All state lives in `state` → change it, call refresh().
+     No libraries; saves to localStorage.
      ============================================================ -->
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -38,8 +33,8 @@
     --ink:    #1A1F2E;
     --muted:  rgba(26,31,46,0.62);
     --indigo: #2E3A8C;
-    --accent: #2E3A8C;   /* indigo used as text/lines on surfaces */
-    --hero-bg:#1A1F2E;   /* result hero — stays dark in both themes */
+    --accent: #2E3A8C;
+    --hero-bg:#1A1F2E;
     --amber:  #E0A93B;
     --good:   #2E9E6B;
     --coral:  #D9614C;
@@ -53,10 +48,6 @@
     color-scheme: light;
   }
 
-  /* ---------- dark theme ----------
-     Flips the neutrals; the hero keeps its own dark background so
-     the white text on it stays readable. Indigo is brightened via
-     --accent for text/lines that sit on dark surfaces. */
   [data-theme="dark"] {
     --paper:  #0F1320;
     --card:   #171C2B;
@@ -67,7 +58,6 @@
     --hero-bg:#1E2540;
     --line:   rgba(231,234,242,0.14);
     --line-2: rgba(231,234,242,0.26);
-
     color-scheme: dark;
   }
 
@@ -81,31 +71,22 @@
   .wrap { width: min(820px, 92vw); margin: 0 auto; }
 
   header.site { padding: 2rem 0 0.5rem; }
-  .top-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-  }
+  .top-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
   .brand {
     display: flex; align-items: center; gap: 0.7rem;
-    font-family: var(--display); font-weight: 600; font-size: 1.55rem;
-    letter-spacing: -0.01em;
+    font-family: var(--display); font-weight: 600; font-size: 1.55rem; letter-spacing: -0.01em;
   }
   .brand .mark {
     width: 34px; height: 34px; border-radius: 9px; flex: none;
-    background: var(--indigo); color: #fff;
-    display: grid; place-items: center;
+    background: var(--indigo); color: #fff; display: grid; place-items: center;
     font-family: var(--mono); font-weight: 700; font-size: 0.95rem;
   }
-  .brand small {
-    font-family: var(--body); font-weight: 500; font-size: 0.8rem;
-    color: var(--muted); display: block; margin-top: 0.1rem;
-  }
+  .brand small { font-family: var(--body); font-weight: 500; font-size: 0.8rem; color: var(--muted); display: block; margin-top: 0.1rem; }
 
-  /* ---------- theme toggle ---------- */
   .theme-toggle {
     flex: none; width: 40px; height: 40px; border-radius: 11px;
     border: 1.5px solid var(--line-2); background: var(--card); color: var(--ink);
-    cursor: pointer; font-size: 1.1rem; line-height: 1;
-    display: grid; place-items: center;
+    cursor: pointer; font-size: 1.1rem; line-height: 1; display: grid; place-items: center;
     transition: border-color 0.15s, transform 0.12s;
   }
   .theme-toggle:hover { border-color: var(--indigo); }
@@ -119,129 +100,110 @@
 
   /* ---------- result hero ---------- */
   .result {
-    background: var(--hero-bg); color: #fff;
-    border-radius: 20px; padding: 1.8rem 2rem;
-    margin: 1.5rem 0; display: flex; align-items: center;
-    justify-content: space-between; gap: 1.5rem; flex-wrap: wrap;
-    transition: background 0.3s ease;
+    background: var(--hero-bg); color: #fff; border-radius: 20px; padding: 1.8rem 2rem;
+    margin: 1.5rem 0; display: flex; align-items: center; justify-content: space-between;
+    gap: 1.5rem; flex-wrap: wrap; transition: background 0.3s ease;
   }
-  .result .gpa-num {
-    font-family: var(--mono); font-weight: 700;
-    font-size: clamp(3rem, 12vw, 4.5rem); line-height: 1;
-    letter-spacing: -0.03em;
-  }
-  .result .gpa-label {
-    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.15em;
-    text-transform: uppercase; opacity: 0.6; margin-bottom: 0.4rem;
-  }
-  .result .class-badge {
-    font-family: var(--display); font-weight: 600; font-size: 1.35rem;
-    text-align: right;
-  }
-  .result .class-sub {
-    font-family: var(--mono); font-size: 0.75rem; opacity: 0.65;
-    text-align: right; margin-top: 0.2rem;
-  }
-  .class-badge.first  { color: #7FE9B0; }
-  .class-badge.upper  { color: #A8E063; }
-  .class-badge.lower  { color: var(--amber); }
-  .class-badge.third  { color: #F0B860; }
-  .class-badge.pass   { color: #E88F6F; }
-  .class-badge.fail   { color: var(--coral); }
-  .class-badge.none   { color: rgba(255,255,255,0.4); }
-
-  .totals {
-    display: flex; gap: 2rem; font-family: var(--mono); font-size: 0.8rem;
-    opacity: 0.8; margin-top: 0.6rem; width: 100%;
-  }
+  .result .gpa-num { font-family: var(--mono); font-weight: 700; font-size: clamp(3rem, 12vw, 4.5rem); line-height: 1; letter-spacing: -0.03em; }
+  .result .gpa-label { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; opacity: 0.6; margin-bottom: 0.4rem; }
+  .result .class-badge { font-family: var(--display); font-weight: 600; font-size: 1.35rem; text-align: right; }
+  .result .class-sub { font-family: var(--mono); font-size: 0.75rem; opacity: 0.65; text-align: right; margin-top: 0.2rem; }
+  .class-badge.first { color: #7FE9B0; }
+  .class-badge.upper { color: #A8E063; }
+  .class-badge.lower { color: var(--amber); }
+  .class-badge.third { color: #F0B860; }
+  .class-badge.pass  { color: #E88F6F; }
+  .class-badge.fail  { color: var(--coral); }
+  .class-badge.none  { color: rgba(255,255,255,0.4); }
+  .totals { display: flex; gap: 2rem; font-family: var(--mono); font-size: 0.8rem; opacity: 0.85; margin-top: 0.2rem; width: 100%; flex-wrap: wrap; }
   .totals span b { color: var(--amber); }
 
+  .prog-wrap { width: 100%; margin-top: 0.4rem; }
+  .prog-track { height: 8px; background: rgba(255,255,255,0.15); border-radius: 999px; overflow: hidden; }
+  .prog-bar { height: 100%; width: 0; background: var(--amber); border-radius: 999px; transition: width 0.5s ease; }
+  .prog-note { font-family: var(--mono); font-size: 0.72rem; opacity: 0.8; margin-top: 0.4rem; }
+
   /* ---------- cards ---------- */
-  .card {
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 16px; padding: 1.4rem 1.5rem; margin-bottom: 1.2rem;
-  }
-  .card h2 {
-    font-family: var(--display); font-weight: 600; font-size: 1.25rem;
-    margin: 0 0 0.3rem;
-  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 1.4rem 1.5rem; margin-bottom: 1.2rem; }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; }
+  .card h2 { font-family: var(--display); font-weight: 600; font-size: 1.25rem; margin: 0 0 0.3rem; }
   .card .hint { color: var(--muted); font-size: 0.88rem; margin: 0 0 1.1rem; }
 
-  /* ---------- course rows ---------- */
-  .course-head, .course {
-    display: grid;
-    grid-template-columns: 1fr 90px 130px 40px;
-    gap: 0.6rem; align-items: center;
-  }
-  .course-head {
-    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.08em;
-    text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;
-    padding: 0 0.2rem;
-  }
+  /* segmented toggle */
+  .seg { display: inline-flex; gap: 0.25rem; padding: 0.25rem; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+  .seg button { border: none; background: transparent; color: var(--muted); font: inherit; font-weight: 600; font-size: 0.8rem; padding: 0.35rem 0.7rem; border-radius: 7px; cursor: pointer; }
+  .seg button.active { background: var(--card); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.14); }
+
+  /* semester tabs */
+  .sem-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.2rem 0 0.8rem; }
+  .sem-tab { padding: 0.4rem 0.8rem; border-radius: 999px; border: 1.5px solid var(--line-2); background: var(--paper); color: var(--ink); cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+  .sem-tab.active { background: var(--indigo); color: #fff; border-color: var(--indigo); }
+  .sem-add { border: 1.5px dashed var(--line-2); background: transparent; color: var(--accent); border-radius: 999px; padding: 0.4rem 0.8rem; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+  .sem-actions { display: flex; gap: 0.6rem; margin-bottom: 0.9rem; }
+  .mini { background: none; border: none; color: var(--muted); cursor: pointer; font: inherit; font-size: 0.8rem; padding: 0.2rem 0; }
+  .mini:hover { color: var(--accent); }
+  .mini.danger:hover { color: var(--coral); }
+
+  /* course rows */
+  .course-head, .course { display: grid; grid-template-columns: 1fr 88px 138px 36px; gap: 0.6rem; align-items: center; }
+  .course-head { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem; padding: 0 0.2rem; }
   .course { margin-bottom: 0.55rem; }
   input, select {
-    width: 100%; font-family: var(--body); font-size: 0.92rem;
-    padding: 0.55rem 0.6rem; border: 1.5px solid var(--line);
-    border-radius: 9px; background: var(--paper); color: var(--ink);
+    width: 100%; font-family: var(--body); font-size: 0.92rem; padding: 0.55rem 0.6rem;
+    border: 1.5px solid var(--line); border-radius: 9px; background: var(--paper); color: var(--ink);
   }
   input:focus, select:focus { outline: 2px solid var(--amber); outline-offset: 1px; border-color: var(--accent); }
   input.num, select.grade { font-family: var(--mono); font-weight: 500; text-align: center; }
-  .del-row {
-    background: none; border: none; cursor: pointer; color: var(--muted);
-    font-size: 1.1rem; border-radius: 7px; padding: 0.3rem;
-  }
+  .mark-cell { display: flex; align-items: center; gap: 0.4rem; }
+  .mark-cell input { text-align: center; }
+  .mark-letter { font-family: var(--mono); font-weight: 700; font-size: 0.82rem; color: var(--accent); min-width: 26px; text-align: center; }
+  .del-row { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 1.1rem; border-radius: 7px; padding: 0.3rem; }
   .del-row:hover { color: var(--coral); background: var(--paper); }
 
-  .btn {
-    font-family: var(--body); font-weight: 600; font-size: 0.92rem;
-    border: none; border-radius: 10px; padding: 0.65rem 1.1rem;
-    cursor: pointer; transition: transform 0.12s, background 0.15s;
-  }
+  .btn { font-family: var(--body); font-weight: 600; font-size: 0.92rem; border: none; border-radius: 10px; padding: 0.65rem 1.1rem; cursor: pointer; transition: transform 0.12s, background 0.15s, border-color 0.15s; }
   .btn:active { transform: translateY(1px); }
-  .btn-add {
-    background: var(--paper); color: var(--accent);
-    border: 1.5px dashed var(--line-2); width: 100%; margin-top: 0.4rem;
-  }
+  .btn-add { background: var(--paper); color: var(--accent); border: 1.5px dashed var(--line-2); width: 100%; margin-top: 0.4rem; }
   .btn-add:hover { border-color: var(--accent); }
+  .btn-line { background: transparent; color: var(--ink); border: 1.5px solid var(--line-2); }
+  .btn-line:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-line.danger:hover { border-color: var(--coral); color: var(--coral); }
   :focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
 
-  /* ---------- cumulative row ---------- */
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
-  .field label {
-    display: block; font-family: var(--mono); font-size: 0.66rem;
-    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
-    margin-bottom: 0.3rem;
-  }
-  .toggle-cum {
-    display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
-    font-size: 0.9rem; user-select: none;
-  }
-  .toggle-cum input { width: auto; }
-  #cumFields { margin-top: 1rem; display: none; }
-  #cumFields.show { display: block; }
+  .field label { display: block; font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.3rem; }
 
-  /* ---------- scale reference ---------- */
-  .scale {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 1.5rem;
-    font-family: var(--mono); font-size: 0.8rem;
-  }
+  /* target output */
+  .target-out { margin-top: 1.1rem; padding: 1.1rem 1.2rem; border-radius: 12px; background: var(--paper); border: 1px solid var(--line); }
+  .target-big { font-family: var(--mono); font-weight: 700; font-size: 1.9rem; line-height: 1; }
+  .target-big.ok { color: var(--good); }
+  .target-big.hard { color: var(--coral); }
+  .target-msg { font-size: 0.88rem; color: var(--muted); margin-top: 0.4rem; }
+
+  /* trend graph */
+  .trend-chart { width: 100%; }
+  .trend-svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .trend-grid { stroke: var(--line); stroke-width: 1; }
+  .trend-first { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 3 4; opacity: 0.7; }
+  .trend-area { fill: var(--accent); opacity: 0.12; }
+  .trend-line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+  .trend-dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+  .trend-lbl { fill: var(--muted); font-family: var(--mono); font-size: 8px; }
+  .empty-mini { color: var(--muted); font-size: 0.88rem; text-align: center; padding: 1rem 0; }
+
+  /* scale */
+  .scale { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem 1.5rem; font-family: var(--mono); font-size: 0.8rem; }
   .scale div { display: flex; justify-content: space-between; padding: 0.2rem 0; border-bottom: 1px solid var(--line); }
   .scale div b { color: var(--accent); }
   @media (max-width: 560px) { .scale { grid-template-columns: repeat(2, 1fr); } }
 
-  .note {
-    font-size: 0.82rem; color: var(--muted); line-height: 1.6;
-    background: var(--card); border-left: 3px solid var(--accent);
-    padding: 0.8rem 1rem; border-radius: 0 10px 10px 0; margin-bottom: 1.2rem;
-  }
+  .backup-btns { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 
-  footer.site {
-    padding: 1rem 0 3rem; font-family: var(--mono);
-    font-size: 0.72rem; color: var(--muted); text-align: center;
-  }
+  .note { font-size: 0.82rem; color: var(--muted); line-height: 1.6; background: var(--card); border-left: 3px solid var(--accent); padding: 0.8rem 1rem; border-radius: 0 10px 10px 0; margin-bottom: 1.2rem; }
+
+  footer.site { padding: 1rem 0 3rem; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); text-align: center; }
 
   @media (max-width: 560px) {
-    .course-head, .course { grid-template-columns: 1fr 64px 104px 34px; gap: 0.4rem; }
+    .course-head, .course { grid-template-columns: 1fr 58px 120px 30px; gap: 0.4rem; }
     .result { padding: 1.4rem; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -256,8 +218,7 @@
         <span class="mark">4.0</span>
         <span>Legon GPA<small>University of Ghana CGPA calculator</small></span>
       </div>
-      <button id="themeToggle" class="theme-toggle" type="button"
-              aria-label="Switch to dark mode" aria-pressed="false">
+      <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false">
         <span class="ic" aria-hidden="true">🌙</span>
       </button>
     </div>
@@ -272,7 +233,7 @@
   <!-- result hero -->
   <section class="result">
     <div>
-      <div class="gpa-label" id="gpaLabel">This semester's GPA</div>
+      <div class="gpa-label" id="gpaLabel">Cumulative CGPA</div>
       <div class="gpa-num" id="gpaNum">0.00</div>
     </div>
     <div>
@@ -282,44 +243,61 @@
     <div class="totals">
       <span>Credits: <b id="totCredits">0</b></span>
       <span>Grade points: <b id="totPoints">0.00</b></span>
+      <span>This semester: <b id="semGpa">0.00</b></span>
+    </div>
+    <div class="prog-wrap" id="progWrap" style="display:none;">
+      <div class="prog-track"><div class="prog-bar" id="progBar"></div></div>
+      <div class="prog-note" id="progNote"></div>
     </div>
   </section>
 
-  <!-- courses -->
+  <!-- tracker + courses -->
   <section class="card">
-    <h2>Your courses this semester</h2>
-    <p class="hint">Add each course with its credit hours and the grade you got (or expect). The GPA updates as you type.</p>
-
-    <div class="course-head">
-      <span>Course (optional)</span>
-      <span style="text-align:center;">Credits</span>
-      <span style="text-align:center;">Grade</span>
-      <span></span>
+    <div class="card-top">
+      <h2>Semesters &amp; courses</h2>
+      <div class="seg" id="modeSeg">
+        <button data-mode="grade" class="active">By grade</button>
+        <button data-mode="marks">By marks</button>
+      </div>
     </div>
+    <p class="hint">Add a semester for each term. Everything you enter is combined into your cumulative CGPA above.</p>
+
+    <div class="sem-tabs" id="semTabs"></div>
+    <div class="sem-actions">
+      <button class="mini" id="renameSem">✏ Rename semester</button>
+      <button class="mini danger" id="delSem">🗑 Delete semester</button>
+    </div>
+
+    <div class="course-head" id="courseHead"></div>
     <div id="courseList"></div>
     <button class="btn btn-add" id="addCourse">+ Add course</button>
   </section>
 
-  <!-- cumulative -->
+  <!-- target -->
   <section class="card">
-    <h2>Already have a CGPA?</h2>
-    <p class="hint">Combine this semester with your record so far to see your new cumulative CGPA.</p>
-    <label class="toggle-cum">
-      <input type="checkbox" id="cumToggle" />
-      I have a previous CGPA to include
-    </label>
-    <div id="cumFields">
-      <div class="row2">
-        <div class="field">
-          <label for="prevCgpa">Previous CGPA</label>
-          <input class="num" id="prevCgpa" type="number" min="0" max="4" step="0.01" placeholder="e.g. 3.42" />
-        </div>
-        <div class="field">
-          <label for="prevCredits">Credits done so far</label>
-          <input class="num" id="prevCredits" type="number" min="0" step="1" placeholder="e.g. 36" />
-        </div>
+    <h2>Target calculator</h2>
+    <p class="hint">Set a CGPA goal and how many credits you'll take next semester. We'll tell you the GPA you need to get there.</p>
+    <div class="row2">
+      <div class="field">
+        <label for="goalCgpa">Goal CGPA</label>
+        <input class="num" id="goalCgpa" type="number" min="0" max="4" step="0.01" placeholder="e.g. 3.60" />
+      </div>
+      <div class="field">
+        <label for="plannedCredits">Credits next semester</label>
+        <input class="num" id="plannedCredits" type="number" min="0" step="1" placeholder="e.g. 18" />
       </div>
     </div>
+    <div class="target-out" id="targetOut">
+      <div class="target-big" id="targetBig">—</div>
+      <div class="target-msg" id="targetMsg">Enter a goal and credits to see what you need.</div>
+    </div>
+  </section>
+
+  <!-- trend graph -->
+  <section class="card">
+    <h2>CGPA trend</h2>
+    <p class="hint">Your cumulative CGPA after each semester. The dashed line marks the First Class threshold (3.60).</p>
+    <div class="trend-chart" id="trendChart"></div>
   </section>
 
   <!-- scale reference -->
@@ -338,6 +316,18 @@
     </div>
   </section>
 
+  <!-- backup -->
+  <section class="card">
+    <h2>Backup &amp; data</h2>
+    <p class="hint">Your data lives only on this device. Export a file to keep a copy or move it to another phone or laptop.</p>
+    <div class="backup-btns">
+      <button class="btn btn-line" id="exportBtn">⬇ Export backup</button>
+      <label class="btn btn-line" for="importFile" style="display:inline-block;">⬆ Import backup</label>
+      <input id="importFile" type="file" accept="application/json,.json" hidden />
+      <button class="btn btn-line danger" id="resetBtn">Reset all</button>
+    </div>
+  </section>
+
   <div class="note">
     <b>Good to know:</b> This calculates the equal-weighted CGPA (total grade points ÷ total credits) — the figure you track each semester. Your <b>final</b> class of degree is decided by the FGPA, which weights the four levels in a 1:1:2:2 ratio (L100 : L200 : L300 : L400), so your final result leans more on your third and fourth year. Always confirm against your official transcript.
   </div>
@@ -349,27 +339,30 @@
 
 <script>
 /* ============================================================
-   GRADING SCALE — the UG 4.0 system
+   GRADING SCALE — UG 4.0 system
    ============================================================ */
 const GRADES = [
-  { letter: "A",  point: 4.0 },
-  { letter: "B+", point: 3.5 },
-  { letter: "B",  point: 3.0 },
-  { letter: "C+", point: 2.5 },
-  { letter: "C",  point: 2.0 },
-  { letter: "D+", point: 1.5 },
-  { letter: "D",  point: 1.0 },
-  { letter: "E",  point: 0.5 },
+  { letter: "A",  point: 4.0 }, { letter: "B+", point: 3.5 },
+  { letter: "B",  point: 3.0 }, { letter: "C+", point: 2.5 },
+  { letter: "C",  point: 2.0 }, { letter: "D+", point: 1.5 },
+  { letter: "D",  point: 1.0 }, { letter: "E",  point: 0.5 },
   { letter: "F",  point: 0.0 }
 ];
+function pointOf(letter) { const g = GRADES.find(x => x.letter === letter); return g ? g.point : 0; }
+function markToGrade(m) {
+  m = parseFloat(m);
+  if (isNaN(m)) return "";
+  if (m >= 80) return "A";  if (m >= 75) return "B+"; if (m >= 70) return "B";
+  if (m >= 65) return "C+"; if (m >= 60) return "C";  if (m >= 55) return "D+";
+  if (m >= 50) return "D";  if (m >= 45) return "E";  return "F";
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
 
 /* ============================================================
-   THEME (light / dark) — remembers the choice, falls back to
-   the device preference the first time. Its own storage key.
+   THEME
    ============================================================ */
 const THEME_KEY = "legon_gpa_theme_v1";
 const themeToggle = document.getElementById("themeToggle");
-
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   const dark = theme === "dark";
@@ -380,9 +373,7 @@ function applyTheme(theme) {
 function initTheme() {
   let theme = null;
   try { theme = localStorage.getItem(THEME_KEY); } catch (e) {}
-  if (!theme) {
-    theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
+  if (!theme) theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   applyTheme(theme);
 }
 themeToggle.addEventListener("click", () => {
@@ -392,15 +383,14 @@ themeToggle.addEventListener("click", () => {
 });
 
 /* ============================================================
-   STATE + STORAGE (with safe fallback)
+   STATE + STORAGE (with migration from the old single-semester shape)
    ============================================================ */
 const STORAGE_KEY = "legon_gpa_v1";
-let state = {
-  courses: [],           // { id, name, credits, grade(letter) }
-  cumOn: false,
-  prevCgpa: "",
-  prevCredits: ""
-};
+let state = { semesters: [], activeId: null, entryMode: "grade", target: { goalCgpa: "", plannedCredits: "" } };
+
+function newId() { return Date.now() + Math.floor(Math.random() * 100000); }
+function newSemester(name) { return { id: newId(), name: name || ("Semester " + (state.semesters.length + 1)), courses: [] }; }
+function activeSemester() { return state.semesters.find(s => s.id === state.activeId) || state.semesters[0]; }
 
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -409,12 +399,25 @@ function save() {
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) state = JSON.parse(raw);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed.semesters) {                       // new shape
+      state = parsed;
+      if (!state.target) state.target = { goalCgpa: "", plannedCredits: "" };
+      if (!state.entryMode) state.entryMode = "grade";
+    } else if (parsed.courses) {                  // migrate old shape → one semester
+      state = {
+        semesters: [{ id: newId(), name: "Semester 1", courses: parsed.courses }],
+        activeId: null, entryMode: "grade",
+        target: { goalCgpa: parsed.prevCgpa || "", plannedCredits: "" }
+      };
+      state.activeId = state.semesters[0].id;
+    }
   } catch (e) { document.getElementById("storageWarn").classList.add("show"); }
 }
 
 /* ============================================================
-   CLASSIFICATION — maps a GPA to its UG degree band
+   CLASSIFICATION
    ============================================================ */
 function classify(gpa) {
   if (gpa >= 3.60) return { label: "First Class", css: "first", range: "3.60 – 4.00" };
@@ -424,134 +427,298 @@ function classify(gpa) {
   if (gpa >= 1.00) return { label: "Pass", css: "pass", range: "1.00 – 1.49" };
   return { label: "Fail", css: "fail", range: "below 1.00" };
 }
+const BANDS = [
+  { name: "Pass", min: 1.00 }, { name: "Third Class", min: 1.50 },
+  { name: "Second Class Lower", min: 2.00 }, { name: "Second Class Upper", min: 3.00 },
+  { name: "First Class", min: 3.60 }
+];
 
-function pointOf(letter) {
-  const g = GRADES.find(x => x.letter === letter);
-  return g ? g.point : 0;
+/* ============================================================
+   MATHS
+   ============================================================ */
+function semesterTotals(sem) {
+  let cr = 0, pt = 0;
+  sem.courses.forEach(c => {
+    const x = parseFloat(c.credits);
+    if (!x || x <= 0 || !c.grade) return;
+    cr += x; pt += x * pointOf(c.grade);
+  });
+  return { credits: cr, points: pt };
+}
+function cumulativeTotals() {
+  let cr = 0, pt = 0;
+  state.semesters.forEach(s => { const t = semesterTotals(s); cr += t.credits; pt += t.points; });
+  return { credits: cr, points: pt };
+}
+function runningCgpa() {
+  let cr = 0, pt = 0; const arr = [];
+  state.semesters.forEach(s => {
+    const t = semesterTotals(s);
+    if (t.credits > 0) { cr += t.credits; pt += t.points; arr.push({ name: s.name, cgpa: pt / cr }); }
+  });
+  return arr;
 }
 
 /* ============================================================
-   RENDER
+   RENDER — semester tabs
+   ============================================================ */
+function renderSemTabs() {
+  const wrap = document.getElementById("semTabs");
+  wrap.innerHTML = state.semesters.map(s =>
+    `<button class="sem-tab ${s.id === state.activeId ? "active" : ""}" data-sem="${s.id}">${escapeHtml(s.name)}</button>`
+  ).join("") + `<button class="sem-add" id="addSem">+ Semester</button>`;
+
+  wrap.querySelectorAll("[data-sem]").forEach(b =>
+    b.addEventListener("click", () => { state.activeId = Number(b.dataset.sem); save(); refresh(); }));
+  document.getElementById("addSem").addEventListener("click", () => {
+    const s = newSemester(); state.semesters.push(s); state.activeId = s.id; save(); refresh();
+  });
+}
+
+/* ============================================================
+   RENDER — course rows (grade or marks mode)
    ============================================================ */
 function renderCourses() {
+  const marks = state.entryMode === "marks";
+  document.getElementById("courseHead").innerHTML =
+    `<span>Course (optional)</span><span style="text-align:center;">Credits</span>` +
+    `<span style="text-align:center;">${marks ? "Mark (0–100)" : "Grade"}</span><span></span>`;
+
+  const sem = activeSemester();
   const list = document.getElementById("courseList");
   list.innerHTML = "";
-  state.courses.forEach(c => {
+  sem.courses.forEach(c => {
     const row = document.createElement("div");
     row.className = "course";
-    row.innerHTML = `
-      <input type="text" placeholder="e.g. DCIT 102" value="${c.name || ""}" data-id="${c.id}" data-f="name" />
-      <input class="num" type="number" min="0" step="1" placeholder="3" value="${c.credits}" data-id="${c.id}" data-f="credits" />
-      <select class="grade" data-id="${c.id}" data-f="grade">
-        ${GRADES.map(g => `<option value="${g.letter}" ${g.letter === c.grade ? "selected" : ""}>${g.letter} (${g.point.toFixed(1)})</option>`).join("")}
-      </select>
-      <button class="del-row" data-del="${c.id}" aria-label="Remove course">✕</button>`;
+    const gradeCell = marks
+      ? `<div class="mark-cell">
+           <input class="num" type="number" min="0" max="100" step="1" placeholder="78" value="${c.mark ?? ""}" data-id="${c.id}" data-f="mark" />
+           <span class="mark-letter">${c.grade || "–"}</span>
+         </div>`
+      : `<select class="grade" data-id="${c.id}" data-f="grade">
+           ${GRADES.map(g => `<option value="${g.letter}" ${g.letter === c.grade ? "selected" : ""}>${g.letter} (${g.point.toFixed(1)})</option>`).join("")}
+         </select>`;
+    row.innerHTML =
+      `<input type="text" placeholder="e.g. DCIT 102" value="${escapeHtml(c.name || "")}" data-id="${c.id}" data-f="name" />
+       <input class="num" type="number" min="0" step="1" placeholder="3" value="${c.credits}" data-id="${c.id}" data-f="credits" />
+       ${gradeCell}
+       <button class="del-row" data-del="${c.id}" aria-label="Remove course">✕</button>`;
     list.appendChild(row);
   });
 
-  // wire inputs
   list.querySelectorAll("[data-f]").forEach(el => {
     el.addEventListener("input", () => {
-      const c = state.courses.find(x => x.id === +el.dataset.id);
+      const c = sem.courses.find(x => x.id === Number(el.dataset.id));
       if (!c) return;
-      c[el.dataset.f] = el.dataset.f === "credits" ? el.value : el.value;
+      const f = el.dataset.f;
+      if (f === "mark") { c.mark = el.value; c.grade = markToGrade(el.value); const badge = el.parentElement.querySelector(".mark-letter"); if (badge) badge.textContent = c.grade || "–"; }
+      else { c[f] = el.value; }
       save(); compute();
     });
   });
-  list.querySelectorAll("[data-del]").forEach(btn => {
+  list.querySelectorAll("[data-del]").forEach(btn =>
     btn.addEventListener("click", () => {
-      state.courses = state.courses.filter(x => x.id !== +btn.dataset.del);
+      sem.courses = sem.courses.filter(x => x.id !== Number(btn.dataset.del));
       save(); renderCourses(); compute();
-    });
-  });
+    }));
 }
 
 /* ============================================================
-   COMPUTE — the actual GPA / CGPA maths
+   COMPUTE — hero, progress, then target + trend
    ============================================================ */
 function compute() {
-  let semCredits = 0, semPoints = 0;
-  state.courses.forEach(c => {
-    const cr = parseFloat(c.credits);
-    if (!cr || cr <= 0) return;
-    semCredits += cr;
-    semPoints += cr * pointOf(c.grade);   // grade points = credits × grade point
-  });
+  const cum = cumulativeTotals();
+  const cgpa = cum.credits > 0 ? cum.points / cum.credits : 0;
+  const semT = semesterTotals(activeSemester());
+  const semGpa = semT.credits > 0 ? semT.points / semT.credits : 0;
 
-  const semGpa = semCredits > 0 ? semPoints / semCredits : 0;
-
-  // cumulative combine (optional)
-  let shownGpa = semGpa;
-  let shownCredits = semCredits;
-  let shownPoints = semPoints;
-  let label = "This semester's GPA";
-
-  if (state.cumOn) {
-    const pCgpa = parseFloat(state.prevCgpa);
-    const pCredits = parseFloat(state.prevCredits);
-    if (pCgpa >= 0 && pCredits > 0) {
-      const prevPoints = pCgpa * pCredits;
-      shownPoints = prevPoints + semPoints;
-      shownCredits = pCredits + semCredits;
-      shownGpa = shownCredits > 0 ? shownPoints / shownCredits : 0;
-      label = "New cumulative CGPA";
-    }
-  }
-
-  document.getElementById("gpaLabel").textContent = label;
-  document.getElementById("gpaNum").textContent = shownGpa.toFixed(2);
-  document.getElementById("totCredits").textContent = shownCredits;
-  document.getElementById("totPoints").textContent = shownPoints.toFixed(2);
+  document.getElementById("gpaNum").textContent = cgpa.toFixed(2);
+  document.getElementById("totCredits").textContent = cum.credits;
+  document.getElementById("totPoints").textContent = cum.points.toFixed(2);
+  document.getElementById("semGpa").textContent = semGpa.toFixed(2);
 
   const badge = document.getElementById("classBadge");
   const sub = document.getElementById("classSub");
-  if (shownCredits > 0) {
-    const cls = classify(shownGpa);
-    badge.textContent = cls.label;
-    badge.className = "class-badge " + cls.css;
-    sub.textContent = cls.range;
+  const progWrap = document.getElementById("progWrap");
+
+  if (cum.credits > 0) {
+    const cls = classify(cgpa);
+    badge.textContent = cls.label; badge.className = "class-badge " + cls.css; sub.textContent = cls.range;
+
+    // progress to next class
+    progWrap.style.display = "block";
+    const bar = document.getElementById("progBar");
+    const note = document.getElementById("progNote");
+    if (cgpa >= 3.60) { bar.style.width = "100%"; note.textContent = "First Class — you're in the top band 🎉"; }
+    else {
+      const next = BANDS.find(b => b.min > cgpa);
+      const curMin = [...BANDS].reverse().find(b => b.min <= cgpa)?.min ?? 0;
+      const pct = Math.max(0, Math.min(100, ((cgpa - curMin) / (next.min - curMin)) * 100));
+      bar.style.width = pct + "%";
+      note.textContent = `${(next.min - cgpa).toFixed(2)} to ${next.name}`;
+    }
   } else {
-    badge.textContent = "—";
-    badge.className = "class-badge none";
-    sub.textContent = "Add courses to begin";
+    badge.textContent = "—"; badge.className = "class-badge none"; sub.textContent = "Add courses to begin";
+    progWrap.style.display = "none";
   }
+
+  renderTarget(cum);
+  renderTrend();
+}
+
+/* ============================================================
+   TARGET — GPA needed next semester to hit a goal
+   ============================================================ */
+function renderTarget(cum) {
+  const big = document.getElementById("targetBig");
+  const msg = document.getElementById("targetMsg");
+  const goal = parseFloat(state.target.goalCgpa);
+  const planned = parseFloat(state.target.plannedCredits);
+
+  big.className = "target-big";
+  if (isNaN(goal) || goal <= 0 || goal > 4) { big.textContent = "—"; msg.textContent = "Enter a goal CGPA between 0 and 4."; return; }
+  if (isNaN(planned) || planned <= 0) { big.textContent = "—"; msg.textContent = "Enter how many credits you'll take next semester."; return; }
+
+  const required = (goal * (cum.credits + planned) - cum.points) / planned;
+
+  if (required <= 0) {
+    big.textContent = "0.00"; big.classList.add("ok");
+    msg.textContent = `You're already on track — even a 0.00 next semester keeps you at or above ${goal.toFixed(2)}.`;
+  } else if (required > 4) {
+    big.textContent = required.toFixed(2); big.classList.add("hard");
+    msg.textContent = `That needs above a 4.0 across ${planned} credits, so it can't be reached in one semester. Try more credits or a lower goal.`;
+  } else {
+    big.textContent = required.toFixed(2) + " GPA"; big.classList.add("ok");
+    const need = GRADES.filter(g => g.point >= required).slice(-1)[0];
+    const avg = need ? `about a ${need.letter} average` : "top grades";
+    msg.textContent = `You need a ${required.toFixed(2)} GPA across those ${planned} credits — roughly ${avg} — to reach a ${goal.toFixed(2)} CGPA.`;
+  }
+}
+
+/* ============================================================
+   TREND — CGPA after each semester (SVG, fixed 0–4 scale)
+   ============================================================ */
+function renderTrend() {
+  const arr = runningCgpa();
+  const mount = document.getElementById("trendChart");
+  if (arr.length === 0) { mount.innerHTML = `<p class="empty-mini">Add graded courses to see your CGPA trend.</p>`; return; }
+
+  const VW = 340, VH = 170, padL = 30, padR = 14, padT = 14, padB = 28;
+  const plotW = VW - padL - padR, plotH = VH - padT - padB, baseY = VH - padB;
+  const n = arr.length;
+  const xAt = i => n === 1 ? padL + plotW / 2 : padL + (i / (n - 1)) * plotW;
+  const yAt = v => padT + (1 - v / 4) * plotH;
+
+  let grid = "";
+  for (let g = 0; g <= 4; g++) {
+    const y = yAt(g).toFixed(1);
+    grid += `<line class="trend-grid" x1="${padL}" y1="${y}" x2="${VW - padR}" y2="${y}" />
+             <text class="trend-lbl" x="${padL - 6}" y="${(+y + 3).toFixed(1)}" text-anchor="end">${g}</text>`;
+  }
+  grid += `<line class="trend-first" x1="${padL}" y1="${yAt(3.6).toFixed(1)}" x2="${VW - padR}" y2="${yAt(3.6).toFixed(1)}" />`;
+
+  const pts = arr.map((d, i) => [xAt(i), yAt(d.cgpa)]);
+  const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const area = `M${xAt(0).toFixed(1)} ${baseY} ` + pts.map(p => "L" + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") + ` L${xAt(n - 1).toFixed(1)} ${baseY} Z`;
+  const dots = pts.map((p, i) => `<circle class="trend-dot" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5"><title>${escapeHtml(arr[i].name)}: ${arr[i].cgpa.toFixed(2)}</title></circle>`).join("");
+  const lbls = arr.map((d, i) => { const nm = d.name.length > 8 ? d.name.slice(0, 8) + "…" : d.name; return `<text class="trend-lbl" x="${xAt(i).toFixed(1)}" y="${VH - 8}" text-anchor="middle">${escapeHtml(nm)}</text>`; }).join("");
+
+  mount.innerHTML = `
+    <svg class="trend-svg" viewBox="0 0 ${VW} ${VH}" role="img" aria-label="CGPA trend across semesters">
+      ${grid}
+      ${n > 1 ? `<path class="trend-area" d="${area}" /><path class="trend-line" d="${line}" />` : ""}
+      ${dots}
+      ${lbls}
+    </svg>`;
 }
 
 /* ============================================================
    ACTIONS
    ============================================================ */
-function addCourse(grade = "A") {
-  state.courses.push({ id: Date.now() + Math.floor(Math.random() * 1000), name: "", credits: "", grade });
+function addCourse() {
+  activeSemester().courses.push({ id: newId(), name: "", credits: "", grade: state.entryMode === "marks" ? "" : "A", mark: "" });
   save(); renderCourses(); compute();
 }
+document.getElementById("addCourse").addEventListener("click", addCourse);
 
-document.getElementById("addCourse").addEventListener("click", () => addCourse());
+document.getElementById("modeSeg").querySelectorAll("[data-mode]").forEach(b =>
+  b.addEventListener("click", () => {
+    state.entryMode = b.dataset.mode;
+    document.querySelectorAll("#modeSeg [data-mode]").forEach(x => x.classList.toggle("active", x === b));
+    save(); renderCourses(); compute();
+  }));
 
-const cumToggle = document.getElementById("cumToggle");
-const cumFields = document.getElementById("cumFields");
-cumToggle.addEventListener("change", () => {
-  state.cumOn = cumToggle.checked;
-  cumFields.classList.toggle("show", state.cumOn);
-  save(); compute();
+document.getElementById("renameSem").addEventListener("click", () => {
+  const s = activeSemester(); if (!s) return;
+  const name = prompt("Rename semester:", s.name);
+  if (name && name.trim()) { s.name = name.trim().slice(0, 24); save(); refresh(); }
 });
-document.getElementById("prevCgpa").addEventListener("input", e => { state.prevCgpa = e.target.value; save(); compute(); });
-document.getElementById("prevCredits").addEventListener("input", e => { state.prevCredits = e.target.value; save(); compute(); });
+document.getElementById("delSem").addEventListener("click", () => {
+  if (state.semesters.length <= 1) { alert("Keep at least one semester."); return; }
+  const s = activeSemester();
+  if (confirm(`Delete "${s.name}" and its courses?`)) {
+    state.semesters = state.semesters.filter(x => x.id !== s.id);
+    state.activeId = state.semesters[0].id;
+    save(); refresh();
+  }
+});
+
+document.getElementById("goalCgpa").addEventListener("input", e => { state.target.goalCgpa = e.target.value; save(); compute(); });
+document.getElementById("plannedCredits").addEventListener("input", e => { state.target.plannedCredits = e.target.value; save(); compute(); });
+
+/* ---------- backup: export / import / reset ---------- */
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "legon-gpa-backup.json"; a.click();
+  URL.revokeObjectURL(url);
+});
+document.getElementById("importFile").addEventListener("change", e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data.semesters || !Array.isArray(data.semesters)) throw new Error("bad file");
+      state = data;
+      if (!state.target) state.target = { goalCgpa: "", plannedCredits: "" };
+      if (!state.entryMode) state.entryMode = "grade";
+      if (!state.activeId || !state.semesters.find(s => s.id === state.activeId)) state.activeId = state.semesters[0].id;
+      save(); syncInputs(); refresh();
+      alert("Backup imported.");
+    } catch (err) { alert("That doesn't look like a valid Legon GPA backup file."); }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  if (!confirm("Reset everything? This clears all semesters and courses on this device.")) return;
+  state = { semesters: [], activeId: null, entryMode: "grade", target: { goalCgpa: "", plannedCredits: "" } };
+  const s = newSemester("Semester 1"); state.semesters.push(s); state.activeId = s.id;
+  save(); syncInputs(); refresh();
+});
 
 /* ============================================================
-   INIT
+   REFRESH + INIT
    ============================================================ */
+function syncInputs() {
+  document.getElementById("goalCgpa").value = state.target.goalCgpa || "";
+  document.getElementById("plannedCredits").value = state.target.plannedCredits || "";
+  document.querySelectorAll("#modeSeg [data-mode]").forEach(x => x.classList.toggle("active", x.dataset.mode === state.entryMode));
+}
+function refresh() { renderSemTabs(); renderCourses(); compute(); }
+
 initTheme();
 load();
-if (state.courses.length === 0) {
-  // start with three empty rows
-  state.courses = [1, 2, 3].map((n, i) => ({ id: Date.now() + i, name: "", credits: "", grade: "A" }));
+if (!state.semesters || state.semesters.length === 0) {
+  const s = newSemester("Semester 1");
+  s.courses = [1, 2, 3].map(() => ({ id: newId(), name: "", credits: "", grade: "A", mark: "" }));
+  state.semesters = [s];
 }
-cumToggle.checked = state.cumOn;
-cumFields.classList.toggle("show", state.cumOn);
-document.getElementById("prevCgpa").value = state.prevCgpa || "";
-document.getElementById("prevCredits").value = state.prevCredits || "";
-renderCourses();
-compute();
+if (!state.activeId || !state.semesters.find(s => s.id === state.activeId)) state.activeId = state.semesters[0].id;
+syncInputs();
+refresh();
 </script>
 </body>
 </html>
